@@ -8,7 +8,6 @@
 using namespace std;
 
 const size_t KEY_SIZE = 64;
-// Reduced bucket count to fit within strict memory limits (5-6 MiB)
 const size_t BUCKET_COUNT = 100003; 
 const string INDEX_FILE = "index.bin";
 const string DATA_FILE = "data.bin";
@@ -20,8 +19,8 @@ struct Entry {
 };
 
 class FileStorage {
-    fstream index_fs;
     fstream data_fs;
+    vector<long long> index_cache;
 
     size_t hash_key(const string& key) {
         size_t h = 5381;
@@ -33,38 +32,37 @@ class FileStorage {
 
 public:
     FileStorage() {
-        index_fs.open(INDEX_FILE, ios::in | ios::out | ios::binary);
-        if (!index_fs) {
-            // Create index file without allocating a massive vector in memory
-            ofstream create_index(INDEX_FILE, ios::out | ios::binary);
-            long long empty_val = -1;
-            for (size_t i = 0; i < BUCKET_COUNT; ++i) {
-                create_index.write(reinterpret_cast<char*>(&empty_val), sizeof(long long));
-            }
-            create_index.close();
-            index_fs.open(INDEX_FILE, ios::in | ios::out | ios::binary);
+        index_cache.assign(BUCKET_COUNT, -1);
+        
+        // Load index from file if it exists
+        ifstream index_in(INDEX_FILE, ios::in | ios::binary);
+        if (index_in) {
+            index_in.read(reinterpret_cast<char*>(index_cache.data()), BUCKET_COUNT * sizeof(long long));
+            index_in.close();
         }
 
         data_fs.open(DATA_FILE, ios::in | ios::out | ios::binary);
         if (!data_fs) {
-            data_fs.open(DATA_FILE, ios::out | ios::binary);
-            data_fs.close();
+            // Create empty data file
+            ofstream create_data(DATA_FILE, ios::out | ios::binary);
+            create_data.close();
             data_fs.open(DATA_FILE, ios::in | ios::out | ios::binary);
         }
     }
 
     ~FileStorage() {
-        if (index_fs.is_open()) index_fs.close();
+        // Save index cache to file
+        ofstream index_out(INDEX_FILE, ios::out | ios::binary);
+        if (index_out) {
+            index_out.write(reinterpret_cast<char*>(index_cache.data()), BUCKET_COUNT * sizeof(long long));
+            index_out.close();
+        }
         if (data_fs.is_open()) data_fs.close();
     }
 
     void insert(const string& key, int value) {
         size_t bucket = hash_key(key);
-        long long head_offset;
-        
-        index_fs.seekg(bucket * sizeof(long long));
-        index_fs.read(reinterpret_cast<char*>(&head_offset), sizeof(long long));
-
+        long long head_offset = index_cache[bucket];
         long long current = head_offset;
 
         while (current != -1) {
@@ -88,17 +86,13 @@ public:
 
         data_fs.write(reinterpret_cast<char*>(&new_entry), sizeof(Entry));
 
-        // Update index
-        index_fs.seekp(bucket * sizeof(long long));
-        index_fs.write(reinterpret_cast<char*>(&new_offset), sizeof(long long));
+        // Update index cache
+        index_cache[bucket] = new_offset;
     }
 
     void remove(const string& key, int value) {
         size_t bucket = hash_key(key);
-        long long head_offset;
-        
-        index_fs.seekg(bucket * sizeof(long long));
-        index_fs.read(reinterpret_cast<char*>(&head_offset), sizeof(long long));
+        long long head_offset = index_cache[bucket];
 
         long long current = head_offset;
         long long prev = -1;
@@ -109,9 +103,7 @@ public:
             data_fs.read(reinterpret_cast<char*>(&e), sizeof(Entry));
             if (strcmp(e.key, key.c_str()) == 0 && e.value == value) {
                 if (prev == -1) {
-                    head_offset = e.next_offset;
-                    index_fs.seekp(bucket * sizeof(long long));
-                    index_fs.write(reinterpret_cast<char*>(&head_offset), sizeof(long long));
+                    index_cache[bucket] = e.next_offset;
                 } else {
                     data_fs.seekp(prev + offsetof(Entry, next_offset));
                     data_fs.write(reinterpret_cast<char*>(&e.next_offset), sizeof(long long));
@@ -125,10 +117,7 @@ public:
 
     void find(const string& key) {
         size_t bucket = hash_key(key);
-        long long current;
-        
-        index_fs.seekg(bucket * sizeof(long long));
-        index_fs.read(reinterpret_cast<char*>(&current), sizeof(long long));
+        long long current = index_cache[bucket];
 
         vector<int> results;
         while (current != -1) {
