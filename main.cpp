@@ -8,8 +8,8 @@
 using namespace std;
 
 const size_t KEY_SIZE = 64;
-// Increased bucket count to reduce collisions and TLE
-const size_t BUCKET_COUNT = 200003; 
+// Increased bucket count to a larger prime to further reduce collisions
+const size_t BUCKET_COUNT = 400009; 
 const string INDEX_FILE = "index.bin";
 const string DATA_FILE = "data.bin";
 
@@ -23,9 +23,12 @@ class FileStorage {
     fstream index_fs;
     fstream data_fs;
 
+    // Improved hash function to reduce collisions
     size_t hash_key(const string& key) {
-        size_t h = 0;
-        for (char c : key) h = h * 31 + c;
+        size_t h = 5381;
+        for (char c : key) {
+            h = ((h << 5) + h) + c; // djb2 hash
+        }
         return h % BUCKET_COUNT;
     }
 
