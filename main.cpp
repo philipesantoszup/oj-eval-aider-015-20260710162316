@@ -8,8 +8,8 @@
 using namespace std;
 
 const size_t KEY_SIZE = 64;
-// Increased bucket count to a larger prime to further reduce collisions
-const size_t BUCKET_COUNT = 400009; 
+// Reduced bucket count to fit within strict memory limits (5-6 MiB)
+const size_t BUCKET_COUNT = 100003; 
 const string INDEX_FILE = "index.bin";
 const string DATA_FILE = "data.bin";
 
@@ -23,7 +23,6 @@ class FileStorage {
     fstream index_fs;
     fstream data_fs;
 
-    // Improved hash function to reduce collisions
     size_t hash_key(const string& key) {
         size_t h = 5381;
         for (char c : key) {
@@ -36,10 +35,13 @@ public:
     FileStorage() {
         index_fs.open(INDEX_FILE, ios::in | ios::out | ios::binary);
         if (!index_fs) {
-            index_fs.open(INDEX_FILE, ios::out | ios::binary);
-            vector<long long> empty_buckets(BUCKET_COUNT, -1);
-            index_fs.write(reinterpret_cast<char*>(empty_buckets.data()), BUCKET_COUNT * sizeof(long long));
-            index_fs.close();
+            // Create index file without allocating a massive vector in memory
+            ofstream create_index(INDEX_FILE, ios::out | ios::binary);
+            long long empty_val = -1;
+            for (size_t i = 0; i < BUCKET_COUNT; ++i) {
+                create_index.write(reinterpret_cast<char*>(&empty_val), sizeof(long long));
+            }
+            create_index.close();
             index_fs.open(INDEX_FILE, ios::in | ios::out | ios::binary);
         }
 
@@ -111,7 +113,6 @@ public:
                     index_fs.seekp(bucket * sizeof(long long));
                     index_fs.write(reinterpret_cast<char*>(&head_offset), sizeof(long long));
                 } else {
-                    // Only update the next_offset of the previous entry
                     data_fs.seekp(prev + offsetof(Entry, next_offset));
                     data_fs.write(reinterpret_cast<char*>(&e.next_offset), sizeof(long long));
                 }
