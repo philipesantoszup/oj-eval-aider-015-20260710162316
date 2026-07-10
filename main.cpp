@@ -8,7 +8,8 @@
 using namespace std;
 
 const size_t KEY_SIZE = 64;
-const size_t BUCKET_COUNT = 100003; 
+// Increased bucket count to reduce collisions and TLE
+const size_t BUCKET_COUNT = 200003; 
 const string INDEX_FILE = "index.bin";
 const string DATA_FILE = "data.bin";
 
@@ -25,7 +26,7 @@ class FileStorage {
     size_t hash_key(const string& key) {
         size_t h = 5381;
         for (char c : key) {
-            h = ((h << 5) + h) + c; // djb2 hash
+            h = ((h << 5) + h) + c;
         }
         return h % BUCKET_COUNT;
     }
@@ -34,16 +35,20 @@ public:
     FileStorage() {
         index_cache.assign(BUCKET_COUNT, -1);
         
-        // Load index from file if it exists
         ifstream index_in(INDEX_FILE, ios::in | ios::binary);
         if (index_in) {
-            index_in.read(reinterpret_cast<char*>(index_cache.data()), BUCKET_COUNT * sizeof(long long));
+            // Check if the file size matches our current BUCKET_COUNT
+            index_in.seekg(0, ios::end);
+            long long size = index_in.tellg();
+            index_in.seekg(0, ios::beg);
+            if (size == (long long)BUCKET_COUNT * sizeof(long long)) {
+                index_in.read(reinterpret_cast<char*>(index_cache.data()), BUCKET_COUNT * sizeof(long long));
+            }
             index_in.close();
         }
 
         data_fs.open(DATA_FILE, ios::in | ios::out | ios::binary);
         if (!data_fs) {
-            // Create empty data file
             ofstream create_data(DATA_FILE, ios::out | ios::binary);
             create_data.close();
             data_fs.open(DATA_FILE, ios::in | ios::out | ios::binary);
@@ -51,7 +56,6 @@ public:
     }
 
     ~FileStorage() {
-        // Save index cache to file
         ofstream index_out(INDEX_FILE, ios::out | ios::binary);
         if (index_out) {
             index_out.write(reinterpret_cast<char*>(index_cache.data()), BUCKET_COUNT * sizeof(long long));
@@ -69,13 +73,12 @@ public:
             data_fs.seekg(current);
             Entry e;
             data_fs.read(reinterpret_cast<char*>(&e), sizeof(Entry));
-            if (strcmp(e.key, key.c_str()) == 0 && e.value == value) {
-                return; // Already exists
+            if (e.value == value && strcmp(e.key, key.c_str()) == 0) {
+                return; 
             }
             current = e.next_offset;
         }
 
-        // Append new entry
         data_fs.seekp(0, ios::end);
         long long new_offset = data_fs.tellp();
         Entry new_entry;
@@ -85,8 +88,6 @@ public:
         new_entry.next_offset = head_offset;
 
         data_fs.write(reinterpret_cast<char*>(&new_entry), sizeof(Entry));
-
-        // Update index cache
         index_cache[bucket] = new_offset;
     }
 
@@ -101,7 +102,7 @@ public:
             data_fs.seekg(current);
             Entry e;
             data_fs.read(reinterpret_cast<char*>(&e), sizeof(Entry));
-            if (strcmp(e.key, key.c_str()) == 0 && e.value == value) {
+            if (e.value == value && strcmp(e.key, key.c_str()) == 0) {
                 if (prev == -1) {
                     index_cache[bucket] = e.next_offset;
                 } else {
@@ -154,7 +155,7 @@ int main() {
     int val;
 
     for (int i = 0; i < n; ++i) {
-        cin >> cmd;
+        if (!(cin >> cmd)) break;
         if (cmd == "insert") {
             cin >> key >> val;
             storage.insert(key, val);
