@@ -8,8 +8,8 @@
 using namespace std;
 
 const size_t KEY_SIZE = 64;
-// Increased bucket count to reduce collisions and TLE
-const size_t BUCKET_COUNT = 200003; 
+// Increased bucket count to further reduce collisions
+const size_t BUCKET_COUNT = 400009; 
 const string INDEX_FILE = "index.bin";
 const string DATA_FILE = "data.bin";
 
@@ -37,10 +37,10 @@ public:
         
         ifstream index_in(INDEX_FILE, ios::in | ios::binary);
         if (index_in) {
-            // Check if the file size matches our current BUCKET_COUNT
             index_in.seekg(0, ios::end);
             long long size = index_in.tellg();
             index_in.seekg(0, ios::beg);
+            // Only load if the file matches the current BUCKET_COUNT
             if (size == (long long)BUCKET_COUNT * sizeof(long long)) {
                 index_in.read(reinterpret_cast<char*>(index_cache.data()), BUCKET_COUNT * sizeof(long long));
             }
