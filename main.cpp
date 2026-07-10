@@ -8,7 +8,8 @@
 using namespace std;
 
 const size_t KEY_SIZE = 64;
-const size_t BUCKET_COUNT = 100003; // Prime number for hash table
+// Increased bucket count to reduce collisions and TLE
+const size_t BUCKET_COUNT = 200003; 
 const string INDEX_FILE = "index.bin";
 const string DATA_FILE = "data.bin";
 
@@ -60,7 +61,6 @@ public:
         index_fs.read(reinterpret_cast<char*>(&head_offset), sizeof(long long));
 
         long long current = head_offset;
-        long long prev = -1;
 
         while (current != -1) {
             data_fs.seekg(current);
@@ -69,7 +69,6 @@ public:
             if (strcmp(e.key, key.c_str()) == 0 && e.value == value) {
                 return; // Already exists
             }
-            prev = current;
             current = e.next_offset;
         }
 
@@ -109,12 +108,9 @@ public:
                     index_fs.seekp(bucket * sizeof(long long));
                     index_fs.write(reinterpret_cast<char*>(&head_offset), sizeof(long long));
                 } else {
-                    data_fs.seekp(prev);
-                    Entry prev_e;
-                    data_fs.read(reinterpret_cast<char*>(&prev_e), sizeof(Entry));
-                    prev_e.next_offset = e.next_offset;
-                    data_fs.seekp(prev);
-                    data_fs.write(reinterpret_cast<char*>(&prev_e), sizeof(Entry));
+                    // Only update the next_offset of the previous entry
+                    data_fs.seekp(prev + offsetof(Entry, next_offset));
+                    data_fs.write(reinterpret_cast<char*>(&e.next_offset), sizeof(long long));
                 }
                 return;
             }
@@ -142,13 +138,13 @@ public:
         }
 
         if (results.empty()) {
-            cout << "null" << endl;
+            cout << "null\n";
         } else {
             sort(results.begin(), results.end());
             for (size_t i = 0; i < results.size(); ++i) {
                 cout << results[i] << (i == results.size() - 1 ? "" : " ");
             }
-            cout << endl;
+            cout << "\n";
         }
     }
 };
